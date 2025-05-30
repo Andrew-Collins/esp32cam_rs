@@ -3,47 +3,28 @@
 
 Rust esp32-cam examples
 
-### Usage
-
-After cloning the repo, download the esp32-camera component
-
+## Setup
+### Git
 ```bash
-git submodule update --init
+git clone <URL> && git submodule update --init
 ```
-
-then copy `src/wifi_config.rs.example` into `src/wifi_config.rs` and fill in the correct values
-
-## Telegram bot
-
+or 
 ```bash
-cargo run --example telegram_bot
-
+git clone --recursive <URL>
 ```
+### Rust
+See
+https://docs.esp-rs.org/book/installation/index.html
 
-Insert the correct token and owner id, then use the /photo command to take a picture
+This project is `std`, so follow the section of the guide for installing `std` dependencies.
 
-<img width="480" alt="image" src="https://github.com/Kezii/esp32cam_rs/assets/3357750/5a61974f-a0dc-4bdd-94ad-81225c53ba59">
+## Examples
+### SD Card
+Saves image, saves to SD card, and sleeps.
+Can set sleep time from `CONFIG.TXT` file on the SD card.
+`cargo run -r --example sd`
 
-## Webserver
-
-```bash
-cargo run --example webserver
-```
-
-Connect to the ip in the log output, then access the /camera.jpg path to take a picture and have it delivered to your browser
-
-## IDotMatrix
-
-```bash
-cargo run --example idotmatrix
-```
-
-If you have an idotmatrix display, the esp32-cam will deliver an image to it every few seconds
-
-<img width="480" alt="image" src="https://github.com/Kezii/esp32cam_rs/assets/3357750/148e0a0e-3c06-47f0-9916-6f1ec76d67e5">
-
-
-## credits:
+## Credits:
 https://github.com/esp-rs/std-training
 
 https://github.com/jlocash/esp-camera-rs
