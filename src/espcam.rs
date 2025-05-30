@@ -46,9 +46,12 @@ pub struct CameraSensor<'a> {
     _p: PhantomData<&'a camera::sensor_t>,
 }
 
-impl<'a> CameraSensor<'a> {
+impl CameraSensor<'_> {
     pub fn init_status(&self) -> Result<(), EspError> {
         esp!(unsafe { (*self.sensor).init_status.unwrap()(self.sensor) })
+    }
+    pub fn id(&self) -> u16 {
+        unsafe { (*self.sensor).id.PID }
     }
     pub fn reset(&self) -> Result<(), EspError> {
         esp!(unsafe { (*self.sensor).reset.unwrap()(self.sensor) })
@@ -310,7 +313,7 @@ impl<'a> Camera<'a> {
     }
 }
 
-impl<'a> Drop for Camera<'a> {
+impl Drop for Camera<'_> {
     fn drop(&mut self) {
         esp!(unsafe { camera::esp_camera_deinit() }).expect("error during esp_camera_deinit")
     }

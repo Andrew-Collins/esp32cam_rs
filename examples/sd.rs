@@ -58,6 +58,13 @@ fn main() -> Result<()> {
     )
     .unwrap();
 
+    //
+    if camera.sensor().id() == 0x5640 {
+        let _ = camera
+            .sensor()
+            .set_framesize(esp_idf_sys::camera::framesize_t_FRAMESIZE_QSXGA);
+    }
+
     // SD
     let spi = peripherals.spi2;
     let sclk = peripherals.pins.gpio14; // CLK
