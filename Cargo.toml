@@ -44,7 +44,7 @@ embuild = { version = "0.33", features = ["espidf"] }
 embedded-sdmmc = "0.8.1"
 # To convert Spi bus to SpiDevice
 embedded-hal-bus = "0.3.0"
-image = { version = "0.25", default-features = false, features = ["png"] }
+embedded-hal = "1.0"
 
 
 [[package.metadata.esp-idf-sys.extra_components]]

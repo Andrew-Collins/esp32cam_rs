@@ -1,15 +1,12 @@
-use core::panic;
-
 use anyhow::Result;
+use embedded_hal::spi::MODE_0;
 
 use embedded_sdmmc::{Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use esp_idf_hal::delay::{self};
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_hal::spi::*;
 use esp_idf_hal::units::FromValueType;
-use esp_idf_sys::camera;
-use espcam::espcam::{Camera, FrameBuffer};
-use image::{ImageBuffer, ImageFormat, Rgb};
+use espcam::espcam::Camera;
 
 #[derive(Default)]
 pub struct DummyTimesource();
@@ -29,35 +26,6 @@ impl TimeSource for DummyTimesource {
     }
 }
 
-fn framebuffer_to_img(framebuffer: FrameBuffer<'_>) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
-    let data = framebuffer.data();
-    ImageBuffer::from_fn(
-        framebuffer.width() as u32,
-        framebuffer.height() as u32,
-        |x, y| match framebuffer.format() {
-            camera::pixformat_t_PIXFORMAT_RGB565 => {
-                let pix_addr = (x + y * framebuffer.width() as u32) as usize * 2;
-                let raw_pixel = u16::from_be_bytes([data[pix_addr], data[pix_addr + 1]]);
-
-                let decoded = rgb565::Rgb565::unpack_565(raw_pixel);
-
-                Rgb([decoded.0, decoded.1, decoded.2])
-            }
-
-            camera::pixformat_t_PIXFORMAT_GRAYSCALE => {
-                let pix_addr = (x + y * framebuffer.width() as u32) as usize;
-                let raw_pixel = data[pix_addr];
-
-                Rgb([raw_pixel, raw_pixel, raw_pixel])
-            }
-
-            _ => {
-                panic!("unsupported format");
-            }
-        },
-    )
-}
-
 fn main() -> Result<()> {
     // esp_idf_svc::sys::link_patches();
     // esp_idf_svc::log::EspLogger::initialize_default();
@@ -67,34 +35,36 @@ fn main() -> Result<()> {
     // Camera
     let camera = Camera::new(
         peripherals.pins.gpio32, //PWDN
-        peripherals.pins.gpio15, // XCLK
-        peripherals.pins.gpio2,  // D0
-        peripherals.pins.gpio14, // D1
-        peripherals.pins.gpio35, // D2
-        peripherals.pins.gpio12, // D3
-        peripherals.pins.gpio27, // D4
-        peripherals.pins.gpio33, // D5
+        peripherals.pins.gpio0,  // XCLK
+        peripherals.pins.gpio5,  // D0
+        peripherals.pins.gpio18, // D1
+        peripherals.pins.gpio19, // D2
+        peripherals.pins.gpio21, // D3
+        peripherals.pins.gpio36, // D4
+        peripherals.pins.gpio39, // D5
         peripherals.pins.gpio34, // D6
-        peripherals.pins.gpio39, // D7
-        peripherals.pins.gpio18, // VSYNC
-        peripherals.pins.gpio36, // HREF
-        peripherals.pins.gpio26, // PCLK
-        peripherals.pins.gpio22, // SDIOD
-        peripherals.pins.gpio23, // SDIOC
-        esp_idf_sys::camera::pixformat_t_PIXFORMAT_RGB565,
-        esp_idf_sys::camera::framesize_t_FRAMESIZE_240X240,
+        peripherals.pins.gpio35, // D7
+        peripherals.pins.gpio25, // VSYNC
+        peripherals.pins.gpio23, // HREF
+        peripherals.pins.gpio22, // PCLK
+        peripherals.pins.gpio26, // SDIOD
+        peripherals.pins.gpio27, // SDIOC
+        esp_idf_sys::camera::pixformat_t_PIXFORMAT_JPEG,
+        esp_idf_sys::camera::framesize_t_FRAMESIZE_UXGA,
     )
     .unwrap();
 
     // SD
     let spi = peripherals.spi2;
-    let sclk = peripherals.pins.gpio4; // CLK
-    let mosi = peripherals.pins.gpio21; // CMD
-    let miso = peripherals.pins.gpio13; // DAT0
-    let cs = peripherals.pins.gpio19; // DAT3
+    let sclk = peripherals.pins.gpio14; // CLK
+    let mosi = peripherals.pins.gpio15; // CMD
+    let miso = peripherals.pins.gpio2; // DAT0
+    let cs = peripherals.pins.gpio13; // DAT3
 
     // configuring the spi interface
-    let config = config::Config::new().baudrate(26.MHz().into());
+    let config = config::Config::new()
+        .baudrate(400.kHz().into())
+        .data_mode(MODE_0);
 
     let spi_dev = SpiDeviceDriver::new_single(
         spi,
@@ -115,27 +85,58 @@ fn main() -> Result<()> {
 
     let mut volume0 = volume_mgr.open_volume(VolumeIdx(0)).unwrap();
     let mut root_dir = volume0.open_root_dir().unwrap();
+    let mut i = 0;
+    let _ = root_dir.iterate_dir(|_entry| i += 1);
+    // Start at one as user will probably prefer that
+    println!("Im ind: {}", i);
 
-    loop {
-        let framebuffer = camera.get_framebuffer();
+    let mut f = root_dir
+        .open_file_in_dir("CONFIG.TXT", Mode::ReadOnly)
+        .unwrap();
 
-        if let Some(framebuffer) = framebuffer {
-            println!("Got framebuffer!");
-            println!("width: {}", framebuffer.width());
-            println!("height: {}", framebuffer.height());
-            println!("len: {}", framebuffer.data().len());
-            println!("format: {}", framebuffer.format());
-            let im = framebuffer_to_img(framebuffer);
-            let mut c = std::io::Cursor::new(Vec::new());
-            im.write_to(&mut c, ImageFormat::Png).unwrap();
-            let mut my_file = root_dir
-                .open_file_in_dir("curr.png", Mode::ReadWriteCreate)
-                .unwrap();
-            let _ = my_file.write(&c.into_inner());
-        } else {
-            log::info!("no framebuffer");
+    let mut buffer = [0u8; 16];
+    let n = f.read(&mut buffer).unwrap();
+    let mut s = String::new();
+    for b in buffer.iter().take(n) {
+        let ch = char::from(*b);
+        if ch.is_ascii_graphic() {
+            s.push(ch);
+            // print!("{}", ch);
         }
-
-        std::thread::sleep(std::time::Duration::from_millis(1000));
     }
+    println!("{}", s);
+    let timer_s = s.parse::<u64>().unwrap();
+    let _ = f.close();
+
+    for _ in 0..100 {
+        camera.get_framebuffer();
+    }
+
+    // loop {
+    camera.get_framebuffer();
+    let framebuffer = camera.get_framebuffer();
+
+    if let Some(framebuffer) = framebuffer {
+        println!("Got framebuffer!");
+        println!("width: {}", framebuffer.width());
+        println!("height: {}", framebuffer.height());
+        println!("len: {}", framebuffer.data().len());
+        println!("format: {}", framebuffer.format());
+        let name = format!("{}.jpg", i);
+        i += 1;
+        let mut my_file = root_dir
+            .open_file_in_dir(name.as_str(), Mode::ReadWriteCreate)
+            .unwrap();
+        let _ = my_file.write(framebuffer.data());
+    } else {
+        println!("no framebuffer");
+    }
+
+    println!("Waiting");
+    unsafe {
+        // esp_idf_hal::sys::sleep(10);
+        esp_idf_hal::sys::esp_deep_sleep(timer_s * 1000 * 1000);
+    }
+    // std::thread::sleep(std::time::Duration::from_millis(10000));
+    // }
 }
