@@ -1,3 +1,5 @@
+use std::ascii::AsciiExt;
+
 use anyhow::Result;
 use embedded_hal::spi::MODE_0;
 
@@ -10,6 +12,8 @@ use espcam::espcam::Camera;
 
 #[derive(Default)]
 pub struct DummyTimesource();
+
+const DEFAULT_SLEEP_S: u64 = 86370; // 24 hours - 30s
 
 impl TimeSource for DummyTimesource {
     // In theory you could use the RTC of the rp2040 here, if you had
@@ -86,27 +90,31 @@ fn main() -> Result<()> {
     let mut volume0 = volume_mgr.open_volume(VolumeIdx(0)).unwrap();
     let mut root_dir = volume0.open_root_dir().unwrap();
     let mut i = 0;
-    let _ = root_dir.iterate_dir(|_entry| i += 1);
+    let _ = root_dir.iterate_dir(|entry| {
+        let ext = entry.name.extension().to_ascii_lowercase();
+        if ext == "jpeg".as_bytes() || ext == "jpg".as_bytes() {
+            i += 1
+        }
+    });
     // Start at one as user will probably prefer that
+    i += 1;
     println!("Im ind: {}", i);
 
-    let mut f = root_dir
-        .open_file_in_dir("CONFIG.TXT", Mode::ReadOnly)
-        .unwrap();
-
-    let mut buffer = [0u8; 16];
-    let n = f.read(&mut buffer).unwrap();
     let mut s = String::new();
-    for b in buffer.iter().take(n) {
-        let ch = char::from(*b);
-        if ch.is_ascii_graphic() {
-            s.push(ch);
-            // print!("{}", ch);
+    if let Ok(mut f) = root_dir.open_file_in_dir("CONFIG.TXT", Mode::ReadOnly) {
+        let mut buffer = [0u8; 16];
+        let n = f.read(&mut buffer).unwrap();
+        for b in buffer.iter().take(n) {
+            let ch = char::from(*b);
+            if ch.is_ascii_graphic() {
+                s.push(ch);
+                // print!("{}", ch);
+            }
         }
+        let _ = f.close();
     }
-    println!("{}", s);
-    let timer_s = s.parse::<u64>().unwrap();
-    let _ = f.close();
+    let timer_s = s.parse::<u64>().unwrap_or(DEFAULT_SLEEP_S);
+    println!("Sleep: {}s", timer_s);
 
     for _ in 0..100 {
         camera.get_framebuffer();
